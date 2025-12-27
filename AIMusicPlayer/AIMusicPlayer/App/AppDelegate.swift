@@ -29,7 +29,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             reporterConfiguration.areLogsEnabled = true
             AppMetrica.activateReporter(with: reporterConfiguration)
         }
-        
+        AppsFlyerLib.shared().start()
         AppsFlyerLib.shared().appsFlyerDevKey = AppConfig.appsFlyerDevKey
         AppsFlyerLib.shared().appleAppID = AppConfig.appleAppID
         AppsFlyerLib.shared().isDebug = AppConfig.isDebugBuild
