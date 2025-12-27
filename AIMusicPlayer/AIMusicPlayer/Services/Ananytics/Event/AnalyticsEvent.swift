@@ -22,12 +22,18 @@ enum AnalyticsEvent {
     // MARK: - Player flow
     case playbackStart(track: TrackModel, source: PlaybackSource)
 
-    enum PlaybackSource: String {
-        case list
-        case player
-        case lockscreen
-        case unknown
-    }
+    // MARK: - Ads
+    case adRequest(format: AdFormat, placement: AdPlacement)
+    case adLoaded(format: AdFormat, placement: AdPlacement)
+    case adLoadFailed(format: AdFormat, placement: AdPlacement, error: String)
+    case adShown(format: AdFormat, placement: AdPlacement)
+    case adShowFailed(format: AdFormat, placement: AdPlacement, error: String)
+    case adDismissed(format: AdFormat, placement: AdPlacement)
+
+    enum PlaybackSource: String { case list, player, lockscreen, unknown }
+
+    enum AdFormat: String { case app_open, interstitial, native }
+    enum AdPlacement: String { case app_open_resume, track_loaded_interstitial, generate_native }
 
     var name: String {
         switch self {
@@ -38,6 +44,14 @@ enum AnalyticsEvent {
         case .loadTrackFailed: return "generate_load_failed"
         case .loadTrackSucceeded: return "generate_load_succeeded"
         case .playbackStart: return "playback_start"
+
+        // Ads
+        case .adRequest: return "ad_request"
+        case .adLoaded: return "ad_loaded"
+        case .adLoadFailed: return "ad_load_failed"
+        case .adShown: return "ad_shown"
+        case .adShowFailed: return "ad_show_failed"
+        case .adDismissed: return "ad_dismissed"
         }
     }
 
@@ -81,6 +95,24 @@ enum AnalyticsEvent {
                 "track_id": track.id,
                 "title_len": track.title.count,
                 "source": source.rawValue
+            ]
+
+        // Ads
+        case .adRequest(let format, let placement),
+             .adLoaded(let format, let placement),
+             .adShown(let format, let placement),
+             .adDismissed(let format, let placement):
+            return [
+                "ad_format": format.rawValue,
+                "placement": placement.rawValue
+            ]
+
+        case .adLoadFailed(let format, let placement, let error),
+             .adShowFailed(let format, let placement, let error):
+            return [
+                "ad_format": format.rawValue,
+                "placement": placement.rawValue,
+                "error": error.safeAnalyticsString()
             ]
         }
     }

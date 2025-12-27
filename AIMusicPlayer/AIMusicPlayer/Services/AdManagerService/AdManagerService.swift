@@ -9,7 +9,6 @@ import GoogleMobileAds
 protocol AdManagerServiceProtocol {
     func showAppOpenAd()
     func showInterstitialAd()
-    
     func loadNativeAd(completion: @escaping (NativeAd) -> Void)
 }
 
@@ -17,17 +16,14 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
 
     static let shared = AdManagerService()
 
-    // MARK: - Ad Unit IDs (TEST)
+    private let analytics: AnalyticsServiceProtocol = AnalyticsService()
 
-    /// App Open (launch)
+    // MARK: - Ad Unit IDs (TEST)
     private let appOpenUnitID = "ca-app-pub-3940256099942544/5575463023"
-    /// Interstitial
     private let interstitialUnitID = "ca-app-pub-3940256099942544/4411468910"
-    /// Native
     private let nativeUnitID = "ca-app-pub-3940256099942544/3986624511"
 
     // MARK: - State
-
     private var appOpenAd: AppOpenAd?
     private var interstitialAd: InterstitialAd?
     private var nativeAd: NativeAd?
@@ -37,14 +33,19 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
     private var isLoading = false
     private var isShowing = false
 
-    // MARK: - App Open (launch)
+    private var currentFullScreenPlacement: AnalyticsEvent.AdPlacement?
+    private var currentFullScreenFormat: AnalyticsEvent.AdFormat?
+
+    // MARK: - App Open
 
     func showAppOpenAd() {
         DispatchQueue.main.async {
             guard !self.isShowing else { return }
 
+            self.analytics.track(.adRequest(format: .app_open, placement: .app_open_resume))
+
             self.loadAppOpenAd { [weak self] ad in
-                self?.present(ad)
+                self?.present(ad, placement: .app_open_resume, format: .app_open)
             }
         }
     }
@@ -60,14 +61,26 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
                 self.isLoading = false
 
                 if let error {
+                    self.analytics.track(.adLoadFailed(
+                        format: .app_open,
+                        placement: .app_open_resume,
+                        error: error.localizedDescription
+                    ))
                     print("[AppOpen] load error:", error)
                     return
                 }
 
                 guard let ad else {
+                    self.analytics.track(.adLoadFailed(
+                        format: .app_open,
+                        placement: .app_open_resume,
+                        error: "ad_is_nil"
+                    ))
                     print("[AppOpen] ad is nil")
                     return
                 }
+
+                self.analytics.track(.adLoaded(format: .app_open, placement: .app_open_resume))
 
                 self.appOpenAd = ad
                 self.appOpenAd?.fullScreenContentDelegate = self
@@ -82,11 +95,14 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
         DispatchQueue.main.async {
             guard !self.isShowing else { return }
 
+            let placement: AnalyticsEvent.AdPlacement = .track_loaded_interstitial
+
             if let ad = self.interstitialAd {
-                self.present(ad)
+                self.present(ad, placement: placement, format: .interstitial)
             } else {
+                self.analytics.track(.adRequest(format: .interstitial, placement: placement))
                 self.loadInterstitialAd { [weak self] ad in
-                    self?.present(ad)
+                    self?.present(ad, placement: placement, format: .interstitial)
                 }
             }
         }
@@ -96,6 +112,8 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
         guard !isLoading else { return }
         isLoading = true
 
+        let placement: AnalyticsEvent.AdPlacement = .track_loaded_interstitial
+
         InterstitialAd.load(with: interstitialUnitID, request: Request()) { [weak self] ad, error in
             guard let self else { return }
 
@@ -103,14 +121,26 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
                 self.isLoading = false
 
                 if let error {
+                    self.analytics.track(.adLoadFailed(
+                        format: .interstitial,
+                        placement: placement,
+                        error: error.localizedDescription
+                    ))
                     print("[Interstitial] load error:", error)
                     return
                 }
 
                 guard let ad else {
+                    self.analytics.track(.adLoadFailed(
+                        format: .interstitial,
+                        placement: placement,
+                        error: "ad_is_nil"
+                    ))
                     print("[Interstitial] ad is nil")
                     return
                 }
+
+                self.analytics.track(.adLoaded(format: .interstitial, placement: placement))
 
                 self.interstitialAd = ad
                 self.interstitialAd?.fullScreenContentDelegate = self
@@ -118,11 +148,15 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
             }
         }
     }
-    
+
     // MARK: - Native
-    
+
     func loadNativeAd(completion: @escaping (NativeAd) -> Void) {
         DispatchQueue.main.async {
+            let placement: AnalyticsEvent.AdPlacement = .generate_native
+
+            self.analytics.track(.adRequest(format: .native, placement: placement))
+
             let options = [NativeAdMediaAdLoaderOptions()]
 
             let loader = AdLoader(
@@ -136,31 +170,43 @@ final class AdManagerService: NSObject, AdManagerServiceProtocol {
             loader.delegate = self
 
             self.nativeCompletion = completion
-
             loader.load(Request())
         }
     }
 
     // MARK: - Present
 
-    private func present(_ ad: AppOpenAd) {
+    private func present(_ ad: AppOpenAd,
+                         placement: AnalyticsEvent.AdPlacement,
+                         format: AnalyticsEvent.AdFormat) {
         guard let rootVC = UIApplication.shared.firstKeyWindowRootVC else {
             print("[Ads] rootVC not found")
             return
         }
+
+        currentFullScreenPlacement = placement
+        currentFullScreenFormat = format
+
         isShowing = true
+        analytics.track(.adShown(format: format, placement: placement))
         ad.present(from: rootVC)
     }
 
-    private func present(_ ad: InterstitialAd) {
+    private func present(_ ad: InterstitialAd,
+                         placement: AnalyticsEvent.AdPlacement,
+                         format: AnalyticsEvent.AdFormat) {
         guard let rootVC = UIApplication.shared.firstKeyWindowRootVC else {
             print("[Ads] rootVC not found")
             return
         }
+
+        currentFullScreenPlacement = placement
+        currentFullScreenFormat = format
+
         isShowing = true
+        analytics.track(.adShown(format: format, placement: placement))
         ad.present(from: rootVC)
     }
-    
 }
 
 // MARK: - FullScreenContentDelegate
@@ -169,19 +215,35 @@ extension AdManagerService: FullScreenContentDelegate {
 
     func adDidDismissFullScreenContent(_ ad: FullScreenPresentingAd) {
         DispatchQueue.main.async {
+            if let f = self.currentFullScreenFormat, let p = self.currentFullScreenPlacement {
+                self.analytics.track(.adDismissed(format: f, placement: p))
+            }
+
             self.isShowing = false
             self.appOpenAd = nil
             self.interstitialAd = nil
+            self.currentFullScreenPlacement = nil
+            self.currentFullScreenFormat = nil
         }
     }
 
     func ad(_ ad: FullScreenPresentingAd,
             didFailToPresentFullScreenContentWithError error: Error) {
         DispatchQueue.main.async {
+            if let f = self.currentFullScreenFormat, let p = self.currentFullScreenPlacement {
+                self.analytics.track(.adShowFailed(
+                    format: f,
+                    placement: p,
+                    error: error.localizedDescription
+                ))
+            }
+
             print("[Ads] failed to present:", error)
             self.isShowing = false
             self.appOpenAd = nil
             self.interstitialAd = nil
+            self.currentFullScreenPlacement = nil
+            self.currentFullScreenFormat = nil
         }
     }
 }
@@ -192,6 +254,10 @@ extension AdManagerService: NativeAdLoaderDelegate {
 
     func adLoader(_ adLoader: AdLoader, didReceive nativeAd: NativeAd) {
         DispatchQueue.main.async {
+            let placement: AnalyticsEvent.AdPlacement = .generate_native
+
+            self.analytics.track(.adLoaded(format: .native, placement: placement))
+
             self.nativeAd = nativeAd
             self.nativeCompletion?(nativeAd)
             self.nativeCompletion = nil
@@ -200,6 +266,14 @@ extension AdManagerService: NativeAdLoaderDelegate {
 
     func adLoader(_ adLoader: AdLoader, didFailToReceiveAdWithError error: Error) {
         DispatchQueue.main.async {
+            let placement: AnalyticsEvent.AdPlacement = .generate_native
+
+            self.analytics.track(.adLoadFailed(
+                format: .native,
+                placement: placement,
+                error: error.localizedDescription
+            ))
+
             print("[Native] load error:", error)
             self.nativeCompletion = nil
         }
