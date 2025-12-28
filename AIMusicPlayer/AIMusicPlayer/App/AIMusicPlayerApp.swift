@@ -36,6 +36,9 @@ struct AIMusicPlayerApp: App {
                         break
                     }
                 }
+                .onAppear {
+                    checkIsFirstLaunch()
+                }
             
         }
     }
@@ -46,14 +49,16 @@ struct AIMusicPlayerApp: App {
             .environment(musicPlayer)
     }
     
-    init() {
-        let isFirstLaunch = !UDManager.get(.didLaunchBefore)
-        UDManager.set(.didLaunchBefore, value: true)
-        analyticsService.track(.appLaunched(isFirstLaunch: isFirstLaunch))
-    }
+    init() {}
     
     private func coverAd() {
         adManagerService.showAppOpenAd()
+    }
+    
+    private func checkIsFirstLaunch() {
+        let isFirstLaunch = !UDManager.get(.didLaunchBefore)
+        UDManager.set(.didLaunchBefore, value: true)
+        analyticsService.track(.appLaunched(isFirstLaunch: isFirstLaunch))
     }
     
 }
